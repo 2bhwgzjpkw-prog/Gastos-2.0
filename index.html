@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Gastos Personales</title>
+<title>Cuentas personales</title>
 
 <style>
 body{
@@ -16,31 +16,32 @@ body{
 header{
   padding:16px;
   border-bottom:1px solid #222;
-}
-
-header h1{
-  margin:0;
   font-size:20px;
   font-weight:600;
 }
-
-.total{
-  margin-top:6px;
-  font-size:22px;
-  font-weight:600;
-}
-
-.total.positive{color:#30d158}
-.total.negative{color:#ff453a}
 
 .container{
   padding:16px;
 }
 
+.account{
+  background:#1c1c1e;
+  border-radius:12px;
+  padding:14px;
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  margin-bottom:10px;
+  cursor:pointer;
+}
+
+.account .total.positive{color:#30d158}
+.account .total.negative{color:#ff453a}
+
 .form{
   display:grid;
   gap:10px;
-  margin-bottom:20px;
+  margin:20px 0;
 }
 
 input,select{
@@ -61,157 +62,171 @@ button{
   color:white;
 }
 
-.list{
-  display:flex;
-  flex-direction:column;
-  gap:10px;
-}
-
 .item{
   background:#1c1c1e;
   border-radius:12px;
   padding:12px;
   display:grid;
-  grid-template-columns:80px 1fr auto auto;
+  grid-template-columns:90px 1fr auto auto;
   gap:8px;
   align-items:center;
-  cursor:pointer;
+  margin-bottom:8px;
 }
 
 .date{font-size:13px;color:#aaa}
-.desc{font-size:15px}
 .amount.ingreso{color:#30d158}
 .amount.egreso{color:#ff453a}
-
-.trash{
-  font-size:18px;
-  cursor:pointer;
-}
+.trash{cursor:pointer}
+.back{margin-bottom:10px;color:#0a84ff;cursor:pointer}
+.add-account{margin-top:10px}
 </style>
 </head>
 
 <body>
 
-<header>
-  <h1>Gastos personales</h1>
-  <div id="total" class="total">$0</div>
-</header>
+<header id="title">Cuentas</header>
 
-<div class="container">
-
-  <div class="form">
-    <input type="date" id="date">
-    <input type="text" id="desc" placeholder="Descripción">
-    <input type="number" id="amount" placeholder="Monto">
-    <select id="type">
-      <option value="ingreso">Ingreso</option>
-      <option value="egreso">Egreso</option>
-    </select>
-    <button onclick="saveMovement()">Guardar</button>
-  </div>
-
-  <div class="list" id="list"></div>
-
-</div>
+<div class="container" id="app"></div>
 
 <script>
-let data = JSON.parse(localStorage.getItem("gastos")) || [];
+let data = JSON.parse(localStorage.getItem("cuentas")) || {};
+let currentAccount = null;
 let editIndex = null;
 
-function formatDate(d){
-  const f = new Date(d);
-  return f.toLocaleDateString("es-MX",{day:"2-digit",month:"short",year:"2-digit"});
+function save(){
+  localStorage.setItem("cuentas", JSON.stringify(data));
 }
 
-function formatMoney(n){
+function money(n){
   return n.toLocaleString("es-MX");
 }
 
-function save(){
-  localStorage.setItem("gastos", JSON.stringify(data));
+function formatDate(fechaISO){
+  const d = new Date(fechaISO);
+  return d.toLocaleDateString("es-MX", {
+    day:"2-digit", month:"2-digit", year:"numeric"
+  });
 }
 
-function calcularTotal(){
-  let total = 0;
-  data.forEach(m=>{
-    total += m.type==="ingreso" ? m.amount : -m.amount;
-  });
-
-  const totalEl = document.getElementById("total");
-  totalEl.textContent = "$" + formatMoney(total);
-  totalEl.className = "total " + (total>=0 ? "positive" : "negative");
+function accountTotal(name){
+  return data[name].reduce((t,x)=>t+(x.type==="ingreso"?x.amount:-x.amount),0);
 }
 
-function render(){
-  const list = document.getElementById("list");
-  list.innerHTML="";
+/* ---------- LISTA DE CUENTAS ---------- */
+function renderAccounts(){
+  const app=document.getElementById("app");
+  document.getElementById("title").textContent="Cuentas";
+  app.innerHTML="";
 
-  data.forEach((m,i)=>{
-    const div=document.createElement("div");
-    div.className="item";
-    div.innerHTML=`
-      <div class="date">${formatDate(m.date)}</div>
-      <div class="desc">${m.desc}</div>
-      <div class="amount ${m.type}">
-        ${m.type==="ingreso"?"+":"-"}$${formatMoney(m.amount)}
-      </div>
-      <div class="trash" onclick="remove(${i}); event.stopPropagation()">🗑</div>
-    `;
-    div.onclick = ()=>edit(i);
-    list.appendChild(div);
+  Object.keys(data).forEach(name=>{
+    const t = accountTotal(name);
+    app.innerHTML+=`
+      <div class="account" onclick="openAccount('${name}')">
+        <span>${name}</span>
+        <span class="total ${t>=0?'positive':'negative'}">$${money(t)}</span>
+      </div>`;
   });
 
-  calcularTotal();
+  app.innerHTML+=`
+    <div class="form add-account">
+      <input type="text" id="newAccount" placeholder="Nueva cuenta">
+      <button onclick="addAccount()">Agregar cuenta</button>
+    </div>`;
+}
+
+function addAccount(){
+  const name=document.getElementById("newAccount").value.trim();
+  if(!name || data[name]) return;
+  data[name]=[];
+  save();
+  renderAccounts();
+}
+
+/* ---------- CUENTA ABIERTA ---------- */
+function openAccount(name){
+  currentAccount=name;
+  editIndex=null;
+  document.getElementById("title").textContent=name;
+  const app=document.getElementById("app");
+
+  data[name].sort((a,b)=> new Date(b.date)-new Date(a.date));
+
+  app.innerHTML=`
+    <div class="back" onclick="renderAccounts()">← Volver</div>
+
+    <div class="form">
+      <input type="date" id="date">
+      <input type="number" id="amount" placeholder="Monto">
+      <input type="text" id="desc" placeholder="Concepto">
+      <select id="type">
+        <option value="ingreso">Ingreso</option>
+        <option value="egreso">Egreso</option>
+      </select>
+      <button onclick="saveMovement()">Guardar</button>
+    </div>
+  `;
+
+  data[name].forEach((x,i)=>{
+    app.innerHTML+=`
+      <div class="item" onclick="edit(${i})">
+        <div class="date">${formatDate(x.date)}</div>
+        <div>${x.desc}</div>
+        <div class="amount ${x.type}">
+          ${x.type==="ingreso"?"+":"-"}$${money(x.amount)}
+        </div>
+        <div class="trash" onclick="remove(${i});event.stopPropagation()">🗑</div>
+      </div>`;
+  });
+
+  app.innerHTML+=`
+    <button style="background:#ff453a;margin-top:10px"
+      onclick="deleteAccount('${name}')">
+      Eliminar cuenta
+    </button>`;
 }
 
 function saveMovement(){
   const date=document.getElementById("date").value;
+  const amount=+document.getElementById("amount").value;
   const desc=document.getElementById("desc").value;
-  const amount=document.getElementById("amount").value;
   const type=document.getElementById("type").value;
+  if(!date||!amount) return;
 
-  if(!date || !amount) return alert("Falta fecha o monto");
+  const m={date,amount,desc,type};
 
-  const movement = {
-    date,
-    desc,
-    amount:Number(amount),
-    type
-  };
-
-  if(editIndex !== null){
-    data[editIndex] = movement;
-    editIndex = null;
-  } else {
-    data.unshift(movement);
+  if(editIndex!==null){
+    data[currentAccount][editIndex]=m;
+    editIndex=null;
+  }else{
+    data[currentAccount].push(m);
   }
-
-  clearForm();
   save();
-  render();
+  openAccount(currentAccount);
 }
 
 function edit(i){
-  const m = data[i];
-  document.getElementById("date").value = m.date;
-  document.getElementById("desc").value = m.desc;
-  document.getElementById("amount").value = m.amount;
-  document.getElementById("type").value = m.type;
-  editIndex = i;
+  const m=data[currentAccount][i];
+  document.getElementById("date").value=m.date;
+  document.getElementById("amount").value=m.amount;
+  document.getElementById("desc").value=m.desc;
+  document.getElementById("type").value=m.type;
+  editIndex=i;
 }
 
 function remove(i){
-  data.splice(i,1);
+  data[currentAccount].splice(i,1);
   save();
-  render();
+  openAccount(currentAccount);
 }
 
-function clearForm(){
-  document.getElementById("desc").value="";
-  document.getElementById("amount").value="";
+function deleteAccount(name){
+  if(!confirm("¿Eliminar la cuenta y todos sus movimientos?")) return;
+  delete data[name];
+  save();
+  renderAccounts();
 }
 
-render();
+renderAccounts();
 </script>
 
 </body>
